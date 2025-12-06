@@ -5,3 +5,4 @@ regex
 tqdm
 Pillow
 openai-clip
+flask

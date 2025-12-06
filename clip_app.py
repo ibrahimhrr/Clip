@@ -1,6 +1,7 @@
 import argparse
+from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, List, Tuple
+from typing import Iterable, List, Sequence, Tuple
 
 import clip
 import torch
@@ -14,15 +15,27 @@ def load_imagenet_labels() -> Iterable[str]:
     return ResNet50_Weights.IMAGENET1K_V2.meta["categories"]
 
 
-def rank_labels(image_path: Path, labels: Iterable[str], device: str) -> List[Tuple[str, float]]:
-    resolved_path = image_path.expanduser().resolve()
-    if not resolved_path.exists():
-        raise FileNotFoundError(f"Image not found: {resolved_path}")
+@lru_cache(maxsize=None)
+def load_model(device: str):
+    """Load and cache the CLIP model and preprocess pipeline for a device."""
 
-    model, preprocess = clip.load("ViT-B/32", device=device)
+    return clip.load("ViT-B/32", device=device)
+
+
+def rank_labels_from_image(
+    image: Image.Image,
+    labels: Sequence[str],
+    device: str,
+    model=None,
+    preprocess=None,
+) -> List[Tuple[str, float]]:
+    """Rank labels against an in-memory image."""
+
+    if model is None or preprocess is None:
+        model, preprocess = load_model(device)
 
     with torch.inference_mode():
-        image_tensor = preprocess(Image.open(resolved_path).convert("RGB")).unsqueeze(0).to(device)
+        image_tensor = preprocess(image.convert("RGB")).unsqueeze(0).to(device)
         text_tokens = clip.tokenize(labels).to(device)
 
         image_features = model.encode_image(image_tensor)
@@ -37,6 +50,15 @@ def rank_labels(image_path: Path, labels: Iterable[str], device: str) -> List[Tu
     scores = probabilities.cpu().tolist()
     ranked = sorted(zip(labels, scores), key=lambda item: item[1], reverse=True)
     return ranked
+
+
+def rank_labels(image_path: Path, labels: Iterable[str], device: str) -> List[Tuple[str, float]]:
+    resolved_path = image_path.expanduser().resolve()
+    if not resolved_path.exists():
+        raise FileNotFoundError(f"Image not found: {resolved_path}")
+
+    model, preprocess = load_model(device)
+    return rank_labels_from_image(Image.open(resolved_path), labels, device, model, preprocess)
 
 
 def print_results(image_path: Path, ranked_labels: List[Tuple[str, float]], top_k: int) -> None:
