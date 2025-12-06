@@ -1,10 +1,10 @@
 # CLIP Image Recognition CLI
 
-This repository provides a lightweight command-line tool that uses OpenAI's CLIP model to score images against textual labels. Provide an image and a set of candidate labels and receive similarity scores that indicate which label best matches the image.
+This repository provides a lightweight command-line tool that uses OpenAI's CLIP model to classify images **without** supplying your own labels. The CLI uses the ImageNet-1k category set bundled with torchvision and returns the most likely matches for a given image.
 
 ## Features
 - Loads the pretrained `ViT-B/32` CLIP model.
-- Accepts labels via command line or a labels file (one label per line).
+- Uses the 1,000-class ImageNet label set out of the box—no manual labels required.
 - Normalizes embeddings and returns a ranked list of label probabilities.
 
 ## Requirements
@@ -23,31 +23,33 @@ pip install -r requirements.txt
 
 ## Usage
 
-Run the CLI by passing an image path and one or more labels:
+Run the CLI by passing an image path; the tool will score it against the ImageNet-1k labels automatically:
 
 ```bash
-python clip_app.py path/to/image.jpg --labels "a dog" "a cat" "a car"
+python clip_app.py path/to/image.jpg
 ```
 
-To supply labels from a file (one label per line):
+Show the top 10 predictions:
 
 ```bash
-python clip_app.py path/to/image.jpg --labels-file labels.txt
+python clip_app.py path/to/image.jpg --top-k 10
 ```
 
 Example output:
 
 ```
 Label ranking for image: path/to/image.jpg
-1. a cat        0.71
-2. a dog        0.20
-3. a car        0.09
+1. tabby, tabby cat  0.42
+2. tiger cat         0.25
+3. Egyptian cat      0.18
+4. lynx              0.05
+5. cougar            0.03
 ```
 
 Use `--device` to force CPU or CUDA:
 
 ```bash
-python clip_app.py path/to/image.jpg --labels "a horse" "a person" --device cuda
+python clip_app.py path/to/image.jpg --device cuda
 ```
 
 ## Development
