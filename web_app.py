@@ -1,17 +1,21 @@
+import os
 from io import BytesIO
+from pathlib import Path
 from typing import Optional
 
 from flask import Flask, render_template_string, request
 from PIL import Image
 import torch
 
-from clip_app import load_imagenet_labels, load_model, rank_labels_from_image
+from clip_app import DEFAULT_MODEL_NAME, load_labels, load_model, rank_labels_from_image
 
 app = Flask(__name__)
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-MODEL, PREPROCESS = load_model(DEVICE)
-LABELS = list(load_imagenet_labels())
+MODEL_NAME = os.getenv("CLIP_MODEL_NAME", DEFAULT_MODEL_NAME)
+LABELS_FILE = os.getenv("CLIP_LABELS_FILE")
+LABELS = load_labels(Path(LABELS_FILE)) if LABELS_FILE else load_labels()
+MODEL, PREPROCESS = load_model(MODEL_NAME, DEVICE)
 DEFAULT_TOP_K = 5
 
 
@@ -56,9 +60,9 @@ PAGE_TEMPLATE = """
             <tr><th>Rank</th><th>Label</th><th>Probability</th></tr>
           </thead>
           <tbody>
-            {% for idx, (label, score) in enumerate(predictions, start=1) %}
+            {% for label, score in predictions %}
             <tr>
-              <td>{{ idx }}</td>
+              <td>{{ loop.index }}</td>
               <td>{{ label }}</td>
               <td>{{ '%.4f'|format(score) }}</td>
             </tr>
@@ -89,6 +93,7 @@ def classify_image(upload, top_k: Optional[int] = None):
         image=image,
         labels=LABELS,
         device=DEVICE,
+        model_name=MODEL_NAME,
         model=MODEL,
         preprocess=PREPROCESS,
     )

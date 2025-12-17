@@ -1,12 +1,15 @@
 import argparse
 from functools import lru_cache
 from pathlib import Path
-from typing import Iterable, List, Sequence, Tuple
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 import clip
 import torch
 from PIL import Image
 from torchvision.models import ResNet50_Weights
+
+
+DEFAULT_MODEL_NAME = "ViT-L/14@336px"
 
 
 def load_imagenet_labels() -> Iterable[str]:
@@ -15,24 +18,48 @@ def load_imagenet_labels() -> Iterable[str]:
     return ResNet50_Weights.IMAGENET1K_V2.meta["categories"]
 
 
-@lru_cache(maxsize=None)
-def load_model(device: str):
-    """Load and cache the CLIP model and preprocess pipeline for a device."""
+def load_labels(path: Optional[Path] = None) -> List[str]:
+    """Load labels from a file (one per line) or fallback to ImageNet-1k."""
 
-    return clip.load("ViT-B/32", device=device)
+    if path is None:
+        return list(load_imagenet_labels())
+
+    resolved = path.expanduser().resolve()
+    if not resolved.exists():
+        raise FileNotFoundError(f"Labels file not found: {resolved}")
+
+    # Strip empty/comment lines; keep as simple list of strings
+    labels: List[str] = []
+    with resolved.open("r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            labels.append(line)
+    if not labels:
+        raise ValueError(f"No labels found in file: {resolved}")
+    return labels
+
+
+@lru_cache(maxsize=None)
+def load_model(model_name: str, device: str):
+    """Load and cache a CLIP model + preprocess pipeline for a given model/device."""
+
+    return clip.load(model_name, device=device)
 
 
 def rank_labels_from_image(
     image: Image.Image,
     labels: Sequence[str],
     device: str,
+    model_name: str = DEFAULT_MODEL_NAME,
     model=None,
     preprocess=None,
 ) -> List[Tuple[str, float]]:
     """Rank labels against an in-memory image."""
 
     if model is None or preprocess is None:
-        model, preprocess = load_model(device)
+        model, preprocess = load_model(model_name, device)
 
     with torch.inference_mode():
         image_tensor = preprocess(image.convert("RGB")).unsqueeze(0).to(device)
@@ -57,8 +84,15 @@ def rank_labels(image_path: Path, labels: Iterable[str], device: str) -> List[Tu
     if not resolved_path.exists():
         raise FileNotFoundError(f"Image not found: {resolved_path}")
 
-    model, preprocess = load_model(device)
-    return rank_labels_from_image(Image.open(resolved_path), labels, device, model, preprocess)
+    model, preprocess = load_model(DEFAULT_MODEL_NAME, device)
+    return rank_labels_from_image(
+        Image.open(resolved_path),
+        labels,
+        device,
+        DEFAULT_MODEL_NAME,
+        model,
+        preprocess,
+    )
 
 
 def print_results(image_path: Path, ranked_labels: List[Tuple[str, float]], top_k: int) -> None:
@@ -78,6 +112,17 @@ def parse_args() -> argparse.Namespace:
         help="Compute device to use (default: auto-detect CUDA, otherwise CPU).",
     )
     parser.add_argument(
+        "--model",
+        default=DEFAULT_MODEL_NAME,
+        help="CLIP model to use (default: ViT-L/14@336px).",
+    )
+    parser.add_argument(
+        "--labels-file",
+        type=Path,
+        default=None,
+        help="Optional path to a text file with one label per line. Falls back to ImageNet-1k if omitted.",
+    )
+    parser.add_argument(
         "--top-k",
         type=int,
         default=5,
@@ -90,8 +135,16 @@ def main() -> None:
     args = parse_args()
 
     device = args.device
-    labels = list(load_imagenet_labels())
-    ranked = rank_labels(args.image, labels, device)
+    labels = load_labels(args.labels_file)
+    model, preprocess = load_model(args.model, device)
+    ranked = rank_labels_from_image(
+        Image.open(args.image.expanduser().resolve()),
+        labels,
+        device,
+        args.model,
+        model,
+        preprocess,
+    )
     print_results(args.image, ranked, args.top_k)
 
 

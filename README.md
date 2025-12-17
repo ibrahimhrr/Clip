@@ -3,8 +3,8 @@
 This repository provides both a command-line tool **and** a simple web front end that use OpenAI's CLIP model to classify images **without** supplying your own labels. Both flows use the ImageNet-1k category set bundled with torchvision and return the most likely matches for a given image.
 
 ## Features
-- Loads the pretrained `ViT-B/32` CLIP model.
-- Uses the 1,000-class ImageNet label set out of the box—no manual labels required.
+- Loads the pretrained `ViT-L/14@336px` CLIP model by default (switchable with `--model`).
+- Uses the 1,000-class ImageNet label set out of the box—or point to your own labels file.
 - Normalizes embeddings and returns a ranked list of label probabilities.
 - Web upload form that classifies an image and shows the top predictions.
 
@@ -46,6 +46,12 @@ Show the top 10 predictions:
 python clip_app.py path/to/image.jpg --top-k 10
 ```
 
+Use a different CLIP model (e.g., smaller/faster) and a custom labels file (one label per line):
+
+```bash
+python clip_app.py path/to/image.jpg --model ViT-B/32 --labels-file labels.txt
+```
+
 Example output:
 
 ```
@@ -73,6 +79,14 @@ flask run
 ```
 
 Then open http://127.0.0.1:5000 in your browser. Upload any image and the page will display the top 5 ImageNet predictions with their probabilities.
+
+To customize the model or labels for the web app, set env vars before running:
+
+```bash
+export CLIP_MODEL_NAME="ViT-L/14@336px"
+export CLIP_LABELS_FILE="/full/path/to/labels.txt"  # optional, one label per line
+flask run
+```
 
 ## Development
 - Keep imports at the top of the file; no try/except around imports.
